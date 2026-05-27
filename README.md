@@ -1,39 +1,38 @@
-# Mindustry Java Mod Template
-A Java Mindustry mod template that works on Android and PC. The Kotlin version of this mod can be seen [here](https://github.com/Anuken/MindustryKotlinModTemplate).
+# MultiCrafterLib_Momiji
 
-## Building for Desktop Testing
+为 Mindustry Java 模组作者提供的多功能工厂方块库，可通过 JSON 配置快速使用。
 
-1. Install JDK **17**.
-2. Run `gradlew jar` [1].
-3. Your mod jar will be in the `build/libs` directory. **Only use this version for testing on desktop. It will not work with Android.**
-To build an Android-compatible version, you need the Android SDK. You can either let Github Actions handle this, or set it up yourself. See steps below.
+## 现有方块
 
-## Building through Github Actions
+**MultiCrafter_Momiji** —— 多配方切换工厂，一次启用一个配方，支持物品、液体、电力、热量、载荷的任意组合。自动适配原版单位建造速度与消耗规则。
 
-This repository is set up with Github Actions CI to automatically build the mod for you every commit. This requires a Github repository, for obvious reasons.
-To get a jar file that works for every platform, do the following:
-1. Make a Github repository with your mod name, and upload the contents of this repo to it. Perform any modifications necessary, then commit and push. 
-2. Check the "Actions" tab on your repository page. Select the most recent commit in the list. If it completed successfully, there should be a download link under the "Artifacts" section. 
-3. Click the download link (should be the name of your repo). This will download a **zipped jar** - **not** the jar file itself [2]! Unzip this file and import the jar contained within in Mindustry. This version should work both on Android and Desktop.
+## 使用方式
 
-## Building Locally
+在自己的模组文件夹下建个新的文件夹, 改名为"MultiCrafter_Momiji". 把名字中带"MultiCrafter_Momiji"的文件全挪进去.
 
-Building locally takes more time to set up, but shouldn't be a problem if you've done Android development before.
-1. Download the Android SDK, unzip it and set the `ANDROID_HOME` environment variable to its location.
-2. Make sure you have API level 30 installed, as well as any recent version of build tools (e.g. 30.0.1)
-3. Add a build-tools folder to your PATH. For example, if you have `30.0.1` installed, that would be `$ANDROID_HOME/build-tools/30.0.1`.
-4. Run `gradlew deploy`. If you did everything correctlly, this will create a jar file in the `build/libs` directory that can be run on both Android and desktop. 
+如果你的模组是java的, 并且想用json写多配方库, 可以直接在Mod主文件里的"loadContent()"函数里加上"ClassMap.classes.put("MultiCrafter_Momiji", MultiCrafter_Momiji.class);"
 
-## Adding Dependencies
+如果是json或js的, 需要在mod.json里写上: "java": true, 和 "main": "MultiCrafter_Momiji.LibMod",
 
-Please note that all dependencies on Mindustry, Arc or its submodules **must be declared as compileOnly in Gradle**. Never use `implementation` for core Mindustry or Arc dependencies. 
+然后把名字带有"LibMod"的文件也挪到MultiCrafter_Momiji文件夹里.
 
-- `implementation` **places the entire dependency in the jar**, which is, in most mod dependencies, very undesirable. You do not want the entirety of the Mindustry API included with your mod.
-- `compileOnly` means that the dependency is only around at compile time, and not included in the jar.
+然后想用json或java写都可以了
 
-Only use `implementation` if you want to package another Java library *with your mod*, and that library is not present in Mindustry already.
+## 待办
 
---- 
+- 使各个配方有独立的音效
+- `OmniCrafter_Momiji` —— 单配方全能工厂，任意组合输入输出
+- `ParallelCrafter_Momiji` —— 并行工厂，同时运行所有可行配方
 
-*[1]* *On Linux/Mac it's `./gradlew`, but if you're using Linux I assume you know how to run executables properly anyway.*  
-*[2]: Yes, I know this is stupid. It's a Github UI limitation - while the jar itself is uploaded unzipped, there is currently no way to download it as a single file.*
+## 注意事项
+
+- ~~全部~~大部分是用DeepSeek生成的, 新鲜的石, 可能有很多问题, 尽管提, 我能修的都会修的
+- 感谢群友 Ls 的库, 主要思路就是这样来的
+- json使用时看包里的json示例, java使用时看包里的java示例
+- 有事可以可以加qq: 1945542457
+- 社恐可以加[ve模组](https://github.com/Martian238/Vanilla-Expansion-Mod)的群: 624367215
+
+## 许可
+
+GPL-3.0 License
+就是想用用, 标明原作者就好

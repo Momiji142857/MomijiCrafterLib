@@ -1,0 +1,86 @@
+{
+  "type": "MultiCrafterMomiji",
+  "category": "crafting",
+  "size": 3,
+  "health": 300,
+  "requirements": [
+    {"item": "copper", "amount": 20},
+    {"item": "lead", "amount": 20}
+  ],
+  "maxEfficiency": 3,
+  "overheatScale": 0.5,
+  "itemCapacity": 40,
+  "liquidCapacity": 30,
+
+  "recipes": [
+    {
+      "inputItem": {"item": "copper", "amount": 1},
+      "inputLiquid": {"liquid": "water", "amount": 0.1},
+      "outputItems": [{"item": "lead", "amount": 1}],
+      "outputLiquids": [{"liquid": "slag", "amount": 0.1}],
+      "updateEffect": "plasticburn",
+      "craftTime": 60,
+      "allowOverdrive": true
+    },
+    {
+      "inputItem": {"item": "beryllium", "amount": 1},
+      "inputLiquid": {"liquid": "ozone", "amount": 0.03333},
+      "inputPower": 0.5,
+      "outputItem": {"item": "oxide", "amount": 1},
+      "outputHeat": 5,
+      "craftEffect": "none",
+      "craftTime": 120,
+      "allowOverdrive": false
+    },
+    {
+      "inputItems": [
+        {"item": "tungsten", "amount": 2},
+        {"item": "graphite", "amount": 3}
+      ],
+      "inputHeat": 40,
+      "outputItem": {"item": "carbide", "amount": 1},
+      "craftTime": 67.5,
+      "craftEffect": {
+        "type": "RadialEffect",
+        "effect": "surgeCruciSmoke",
+        "amount": 4,
+        "rotationSpacing": 90,
+        "lengthOffset": 5
+      }
+    },
+    {
+      "inputLiquids": [
+        {"liquid": "slag", "amount": 0.33333},
+        {"liquid": "arkycite", "amount": 0.66667}
+      ],
+      "outputLiquid": {"liquid": "water", "amount": 0.33333},
+      "liquidOutputDirections": [0],
+      "outputPower": 23.33333,
+      "craftEffect": "none"
+    },
+    {
+      "inputItems": [
+        {"item": "lead", "amount": 10},
+        {"item": "silicon", "amount": 10}
+      ],
+      "inputPower": 1.2,
+      "outputPayloads": [{"item": "dagger", "amount": 1}],
+      "craftTime": 900
+    },
+    {
+      "inputPayloads": [{"item": "canvas", "amount": 3}],
+      "inputPower": 1.5,
+      "outputPayloads": [{"item": "stell", "amount": 1}],
+      "inputPayloadCapacity": 10,
+      "craftTime": 2100
+    },
+    {
+      "inputPayloads": [{"item": "conveyor", "amount": 2}],
+      "outputPayloads": [{"item": "junction", "amount": 1}],
+      "outputPower": 0.5,
+      "craftTime": 20,
+      "craftEffect": "formsmoke",
+      "updateEffect": "plasticburn"
+    }
+  ]
+}
