@@ -1,6 +1,6 @@
 package MultiCrafter_Momiji;
 
-import MultiCrafter_Momiji.content.blcoks.ExampleBlocks;
+import MultiCrafter_Momiji.content.blocks.ExampleBlocks;
 import arc.util.*;
 import mindustry.mod.*;
 

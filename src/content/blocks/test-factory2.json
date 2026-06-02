@@ -11,6 +11,7 @@
   "overheatScale": 0.5,
   "itemCapacity": 40,
   "liquidCapacity": 30,
+  "rotate": true,
 
   "recipes": [
     {

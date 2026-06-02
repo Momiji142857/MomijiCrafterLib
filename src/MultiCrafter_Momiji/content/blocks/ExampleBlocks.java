@@ -1,4 +1,4 @@
-package MultiCrafter_Momiji.content.blcoks;
+package MultiCrafter_Momiji.content.blocks;
 
 import MultiCrafter_Momiji.MultiCrafterMomiji;
 import mindustry.content.*;
@@ -23,6 +23,7 @@ public class ExampleBlocks {
             overheatScale = 0.5f;
             itemCapacity = 40;
             liquidCapacity = 30f;
+            rotate = true;
 
             recipes = new Recipe[] {
                     new Recipe() {{
