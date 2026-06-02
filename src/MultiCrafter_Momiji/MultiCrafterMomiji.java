@@ -414,8 +414,9 @@ public class MultiCrafterMomiji extends Block {
                         () -> {
                             float current = e.liquids.get(liq);
                             float fill = current / liquidCapacity;
-                            if (fill > 0.99f) return liq.localizedName + " " + fmtNum(current);
-                            return liq.localizedName + " " + fmtNum(current) + "/" + fmtNum(liquidCapacity)
+                            String icon = " " + Fonts.getUnicodeStr(liq.name);
+                            if (fill > 0.99f) return liq.localizedName + icon + " " + fmtNum(current);
+                            return liq.localizedName  + icon + " " + fmtNum(current) + "/" + fmtNum(liquidCapacity)
                                     + " [lightgray]| " + Strings.autoFixed(fill * 100f, 1) + "%[]";
                         },
                         liq::barColor,
