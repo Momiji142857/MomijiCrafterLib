@@ -4,15 +4,21 @@ import arc.Core;
 import arc.Events;
 import arc.audio.Sound;
 import arc.graphics.Color;
+import arc.graphics.g2d.Draw;
+import arc.graphics.g2d.TextureRegion;
 import arc.math.Angles;
+import arc.math.Interp;
 import arc.math.Mathf;
+import arc.math.geom.Geometry;
 import arc.math.geom.Vec2;
+import arc.scene.actions.Actions;
+import arc.scene.event.Touchable;
 import arc.scene.style.TextureRegionDrawable;
+import arc.scene.ui.Image;
 import arc.scene.ui.TextButton;
+import arc.scene.ui.layout.Stack;
 import arc.scene.ui.layout.Table;
-import arc.struct.EnumSet;
-import arc.struct.ObjectSet;
-import arc.struct.Seq;
+import arc.struct.*;
 import arc.util.*;
 import arc.util.io.Reads;
 import arc.util.io.Writes;
@@ -21,11 +27,11 @@ import mindustry.core.UI;
 import mindustry.ctype.UnlockableContent;
 import mindustry.entities.Effect;
 import mindustry.entities.Units;
+import mindustry.entities.units.BuildPlan;
 import mindustry.game.EventType.UnitCreateEvent;
-import mindustry.gen.Building;
-import mindustry.gen.Icon;
-import mindustry.gen.Iconc;
-import mindustry.gen.Sounds;
+import mindustry.gen.*;
+import mindustry.graphics.Drawf;
+import mindustry.graphics.Layer;
 import mindustry.graphics.Pal;
 import mindustry.logic.LAccess;
 import mindustry.type.*;
@@ -42,47 +48,62 @@ import mindustry.world.blocks.payloads.Payload;
 import mindustry.world.blocks.payloads.PayloadBlock;
 import mindustry.world.blocks.payloads.UnitPayload;
 import mindustry.world.consumers.*;
+import mindustry.world.draw.DrawBlock;
+import mindustry.world.draw.DrawDefault;
 import mindustry.world.meta.*;
 
 import static mindustry.Vars.*;
 
 /**
- * 多配方工厂方块，每个配方可以独立配置输入/输出/热量/载荷等，<p>
+ * 多配方工厂方块，每个配方可独立配置输入/输出/热量/载荷等，
  * 并与原版 {@code GenericCrafter}、{@code HeatProducer}、{@code HeatCrafter}、{@code UnitFactory} 行为对齐。
  *
  * @since 2026-05-27
- * @author Momiji142857 (with DeepSeek)
+ * @see Block
+ * @see mindustry.world.blocks.production.GenericCrafter
+ * @author Momiji142857
  */
 public class MultiCrafterMomiji extends Block {
 
     //region 方块公共属性
 
-    /** 所有可切换的配方列表（静态共享，JSON 加载后直接赋值） */
+    /** 所有可切换的配方列表（JSON 加载后直接赋值） */
     public static Recipe[] recipes = {};
-
-    /** 载荷输出队列容量（全局默认值，配方可覆盖） */
-    public int payloadCapacity = 10;
 
     /** 物品容量，-1 自动计算 */
     public int itemCapacity = -1;
 
     /** 默认的制作特效（配方未配置时使用） */
-    public @Nullable Effect craftEffect;
+    public @Nullable Effect craftEffect = Fx.none;
+    /** 默认的更新特效（配方未配置时使用） */
+    public @Nullable Effect updateEffect = Fx.none;
+    /** 切换配方的默认特效（配方未配置时使用） */
+    public @Nullable Effect switchEffect = Fx.rotateBlock;
 
     /** 如果为 true，液体输出满了也允许生产（排空多余液体） */
     public boolean dumpExtraLiquid = true;
-
-    /** 热量效率上限（超过 1 的部分来自过热） */
-    public float maxEfficiency = 1f;
-
-    /** 过热倍率（超出的热量效率系数） */
-    public float overheatScale = 1f;
-
     /** 是否忽略液体满导致的停产 */
     public boolean ignoreLiquidFullness = false;
 
-    /** 切换配方的默认特效（配方未配置时使用） */
-    public @Nullable Effect switchEffect = Fx.rotateBlock;
+    /** 热量效率上限（超过 1 的部分来自过热） */
+    public float maxEfficiency = 1f;
+    /** 过热倍率（超出的热量效率系数） */
+    public float overheatScale = 1f;
+
+    /** 绘制器，允许通过 JSON 自定义方块外观 */
+    public DrawBlock drawer = new DrawDefault();
+
+    /** 加成属性类型（如 Attribute.water），null 则不启用 */
+    public @Nullable Attribute attribute;
+    /** 基础效率 */
+    public float baseEfficiency = 1f;
+    /** 属性加成系数 */
+    public float boostScale = 1f;
+    /** 属性加成上限 */
+    public float maxBoost = 1f;
+
+    /** 所有配方中涉及的载荷类型（在 init 中初始化，供面板遍历用） */
+    public Seq<UnlockableContent> allPayloadTypes = new Seq<>();
 
     //endregion
 
@@ -91,12 +112,12 @@ public class MultiCrafterMomiji extends Block {
         update = true;
         solid = true;
         hasItems = true;
+        hasPower = true;
+        hasLiquids = true;
         ambientSound = Sounds.loopMachine;
         sync = true;
         ambientSoundVolume = 0.03f;
         drawArrow = false;
-        hasPower = true;
-        hasLiquids = true;
         destructible = true;
         breakable = true;
         targetable = true;
@@ -110,7 +131,6 @@ public class MultiCrafterMomiji extends Block {
 
     @Override
     public void init() {
-        // 统一化配方单值字段为数组
         Recipe.Recipe_set();
 
         // 动态物品消费者：单位配方时按 unitCost 规则缩放物品需求
@@ -210,12 +230,31 @@ public class MultiCrafterMomiji extends Block {
             }
         });
 
+        // 收集所有配方中可能出现的载荷类型
+        allPayloadTypes = new Seq<>();
+        for (Recipe r : recipes) {
+            if (r.inputPayloads != null) {
+                for (PayloadStack stack : r.inputPayloads) {
+                    if (!allPayloadTypes.contains(stack.item)) {
+                        allPayloadTypes.add(stack.item);
+                    }
+                }
+            }
+            if (r.outputPayloads != null) {
+                for (PayloadStack stack : r.outputPayloads) {
+                    if (!allPayloadTypes.contains(stack.item)) {
+                        allPayloadTypes.add(stack.item);
+                    }
+                }
+            }
+        }
+
         super.init();
     }
 
     //endregion
 
-    //region 统计与条状
+    //region 统计信息
 
     @Override
     public void setStats() {
@@ -296,6 +335,10 @@ public class MultiCrafterMomiji extends Block {
         });
     }
 
+    //endregion
+
+    //region 状态栏
+
     @Override
     public void setBars() {
         addBar("health", entity -> new Bar("stat.health", Pal.health, entity::healthf).blink(Color.white));
@@ -350,7 +393,7 @@ public class MultiCrafterMomiji extends Block {
             );
         });
 
-        // 液体存储条（自动为每个出现的液体添加）
+        // 液体存储条
         ObjectSet<Liquid> allLiquids = new ObjectSet<>();
         for (Recipe r : recipes) {
             if (r.inputLiquids != null) for (LiquidStack stack : r.inputLiquids) allLiquids.add(stack.liquid);
@@ -450,7 +493,7 @@ public class MultiCrafterMomiji extends Block {
             idx++;
         }
 
-        // 生产进度条（显示受电力影响的真实剩余时间）
+        // 生产进度条
         addBar("progress", (MultiCrafterBuild e) -> new Bar(
                 () -> {
                     String icon;
@@ -464,7 +507,7 @@ public class MultiCrafterMomiji extends Block {
                     }
                     float p = e.progress();
                     float aps = e.getActualProgressPerSecond();
-                    float remainSec = aps > 0.00001f ? (1f - p) / aps : 5994f; // 5994s = 99.9min 显示为上限
+                    float remainSec = aps > 0.00001f ? (1f - p) / aps : 5994f;
 
                     String timeStr;
                     if (remainSec >= 60f) {
@@ -497,9 +540,8 @@ public class MultiCrafterMomiji extends Block {
 
     //endregion
 
-    //region 工具方法（数字格式化、载荷显示）
+    //region 工具方法
 
-    /** 格式化数字：>=1000 使用 UI 缩写，否则两位小数，极小值科学计数 */
     private static String fmtNum(float value) {
         float abs = Math.abs(value);
         if (abs >= 1000f) return UI.formatAmount((long) value);
@@ -512,7 +554,6 @@ public class MultiCrafterMomiji extends Block {
         return mantissa + "[lightgray]E" + exponent + "[]";
     }
 
-    /** 电力数值格式化：>=1,000,000 使用 UI 缩写 */
     private static String powerFmtNum(float value) {
         float abs = Math.abs(value);
         if (abs >= 1_000_000f) return UI.formatAmount((long) value);
@@ -525,7 +566,6 @@ public class MultiCrafterMomiji extends Block {
         return mantissa + "[lightgray]E" + exponent + "[]";
     }
 
-    /** 显示载荷信息（含每秒产量） */
     public static Table displayPayload(UnlockableContent content, int amount, float craftTime, boolean showName) {
         Table t = new Table();
         t.add(StatValues.stack(content, amount, !showName));
@@ -537,30 +577,104 @@ public class MultiCrafterMomiji extends Block {
 
     //endregion
 
+    //region 渲染与补丁
+
+    @Override
+    public void load(){
+        super.load();
+        drawer.load(this);
+    }
+
+    @Override
+    public void drawPlanRegion(BuildPlan plan, Eachable<BuildPlan> list){
+        drawer.drawPlan(this, plan, list);
+    }
+
+    @Override
+    public TextureRegion[] icons(){
+        return drawer.finalIcons(this);
+    }
+
+    @Override
+    public void getRegionsToOutline(Seq<TextureRegion> out){
+        drawer.getRegionsToOutline(this, out);
+    }
+
+    @Override
+    public void drawOverlay(float x, float y, int rotation){
+        Building b = world.buildWorld(x, y);
+        if(!(b instanceof MultiCrafterBuild build)) return;
+
+        Recipe rec = build.getCurrentRecipe();
+        if(rec == null || rec.outputLiquids == null) return;
+
+        for(int i = 0; i < rec.outputLiquids.length; i++){
+            int dir = rec.liquidOutputDirections.length > i ? rec.liquidOutputDirections[i] : -1;
+            if(dir != -1){
+                Draw.rect(
+                        rec.outputLiquids[i].liquid.fullIcon,
+                        x + Geometry.d4x(dir + rotation) * (size * tilesize / 2f + 4),
+                        y + Geometry.d4y(dir + rotation) * (size * tilesize / 2f + 4),
+                        8f, 8f
+                );
+            }
+        }
+    }
+
+    @Override
+    public boolean outputsItems() {
+        return super.outputsItems();
+    }
+
+    @Override
+    public void afterPatch(){
+        super.afterPatch();
+
+        boolean anyItem = false, anyLiquid = false, anyPower = false;
+        boolean anyOutputPayload = false, anyInputPayload = false;
+
+        for(Recipe r : recipes){
+            if(r.inputItems != null && r.inputItems.length > 0) anyItem = true;
+            if(r.outputItems != null && r.outputItems.length > 0) anyItem = true;
+            if(r.inputLiquids != null && r.inputLiquids.length > 0) anyLiquid = true;
+            if(r.outputLiquids != null && r.outputLiquids.length > 0) anyLiquid = true;
+            if(r.inputPower > 0 || r.outputPower > 0) anyPower = true;
+            if(r.outputPayloads != null && r.outputPayloads.length > 0) anyOutputPayload = true;
+            if(r.inputPayloads != null && r.inputPayloads.length > 0) anyInputPayload = true;
+        }
+
+        hasItems = anyItem;
+        hasLiquids = anyLiquid;
+        hasPower = anyPower;
+        outputsLiquid = anyLiquid;
+        outputsPayload = anyOutputPayload;
+        acceptsPayload = anyInputPayload;
+        acceptsUnitPayloads = anyInputPayload;
+
+        if(!hasItems) itemCapacity = 0;
+    }
+
+    //endregion
+
     //region 配方定义
 
-    /** 单个配方的所有参数，支持 JSON 加载 */
     public static class Recipe {
-        // 输入
         public @Nullable ItemStack[] inputItems;
         public @Nullable LiquidStack[] inputLiquids;
         public float inputPower;
         public float inputHeat;
         public @Nullable PayloadStack[] inputPayloads;
 
-        // 输出
         public @Nullable ItemStack[] outputItems;
         public @Nullable LiquidStack[] outputLiquids;
         public float outputPower;
         public float outputHeat;
         public @Nullable PayloadStack[] outputPayloads;
 
-        // 时间与效率
         public float craftTime = 80f;
         public boolean allowOverdrive = true;
         public float warmupSpeed = 0.019f;
 
-        // 特效与音效
         public @Nullable Effect craftEffect;
         public @Nullable Effect updateEffect;
         public float updateEffectChance = 0.04f;
@@ -569,22 +683,17 @@ public class MultiCrafterMomiji extends Block {
         public @Nullable Sound craftSound;
         public @Nullable Sound updateSound;
 
-        // 载荷相关
         public int inputPayloadCapacity = 0;
         public float inputPayloadMultiplier = 2f;
-        /** 输出载荷队列上限：-1=队列为空时生产，>0=按载荷总数限制，0=禁止生产 */
         public int outputPayloadQueueLimit = -1;
 
-        // 液体输出方向
         public int[] liquidOutputDirections = {-1};
 
-        // 简写兼容字段（JSON 单值自动转为数组）
         public @Nullable ItemStack outputItem;
         public @Nullable LiquidStack outputLiquid;
         public @Nullable ItemStack inputItem;
         public @Nullable LiquidStack inputLiquid;
 
-        /** 将 JSON 单值字段转换为标准数组形式 */
         public static void Recipe_set() {
             for (Recipe r : recipes) {
                 if (r.inputItems == null && r.inputItem != null)
@@ -600,25 +709,158 @@ public class MultiCrafterMomiji extends Block {
             }
         }
 
-        // 快捷查询是否存在特定类型
         public static boolean havePower(Recipe r) { return r.inputPower > 0 || r.outputPower > 0; }
         public static boolean haveItems(Recipe r) { return (r.inputItems != null && r.inputItems.length > 0) || (r.outputItems != null && r.outputItems.length > 0); }
         public static boolean haveLiquids(Recipe r) { return (r.inputLiquids != null && r.inputLiquids.length > 0) || (r.outputLiquids != null && r.outputLiquids.length > 0); }
         public static boolean haveInputPayloads(Recipe r) { return r.inputPayloads != null && r.inputPayloads.length > 0; }
         public static boolean haveOutputPayloads(Recipe r) { return r.outputPayloads != null && r.outputPayloads.length > 0; }
 
-        /** 计算配方描述表格的列跨距 */
         private static int calcColspan(Recipe rec) {
             int inputCount = 0, outputCount = 0;
             if (rec.inputItems != null) inputCount += rec.inputItems.length;
             if (rec.inputLiquids != null) inputCount += rec.inputLiquids.length;
             if (rec.inputPayloads != null) inputCount += rec.inputPayloads.length;
-            inputCount += 2; // 电力和热量各占一列
+            inputCount += 2;
             if (rec.outputItems != null) outputCount += rec.outputItems.length;
             if (rec.outputLiquids != null) outputCount += rec.outputLiquids.length;
             if (rec.outputPayloads != null) outputCount += rec.outputPayloads.length;
             outputCount += 2;
             return Math.max(1, Math.max(inputCount, outputCount)) + 2;
+        }
+
+        // ============ 物品输入便捷方法 ============
+
+        /** 添加单个物品输入，返回自身以支持链式调用 */
+        public Recipe consumeItem(Item item, int amount) {
+            inputItems = addToArray(inputItems, new ItemStack(item, amount));
+            return this;
+        }
+
+        /** 添加多个物品输入，返回自身以支持链式调用 */
+        public Recipe consumeItems(ItemStack... stacks) {
+            for (ItemStack stack : stacks) {
+                inputItems = addToArray(inputItems, stack);
+            }
+            return this;
+        }
+
+        // ============ 液体输入便捷方法 ============
+
+        /** 添加单个液体输入，返回自身以支持链式调用 */
+        public Recipe consumeLiquid(Liquid liquid, float amount) {
+            inputLiquids = addToArray(inputLiquids, new LiquidStack(liquid, amount));
+            return this;
+        }
+
+        /** 添加多个液体输入，返回自身以支持链式调用 */
+        public Recipe consumeLiquids(LiquidStack... stacks) {
+            for (LiquidStack stack : stacks) {
+                inputLiquids = addToArray(inputLiquids, stack);
+            }
+            return this;
+        }
+
+        // ============ 电力输入便捷方法 ============
+
+        /** 设置电力输入，返回自身以支持链式调用 */
+        public Recipe consumePower(float powerPerTick) {
+            inputPower = powerPerTick;
+            return this;
+        }
+
+        // ============ 热量输入便捷方法 ============
+
+        /** 设置热量输入，返回自身以支持链式调用 */
+        public Recipe consumeHeat(float heat) {
+            inputHeat = heat;
+            return this;
+        }
+
+        // ============ 载荷输入便捷方法 ============
+
+        /** 添加单个载荷输入，返回自身以支持链式调用 */
+        public Recipe consumePayload(UnlockableContent item, int amount) {
+            inputPayloads = addToArray(inputPayloads, new PayloadStack(item, amount));
+            return this;
+        }
+
+        /** 添加多个载荷输入，返回自身以支持链式调用 */
+        public Recipe consumePayloads(PayloadStack... stacks) {
+            for (PayloadStack stack : stacks) {
+                inputPayloads = addToArray(inputPayloads, stack);
+            }
+            return this;
+        }
+
+        // ============ 输出便捷方法 ============
+
+        /** 添加单个物品输出，返回自身以支持链式调用 */
+        public Recipe outputItem(Item item, int amount) {
+            outputItems = addToArray(outputItems, new ItemStack(item, amount));
+            return this;
+        }
+
+        /** 添加多个物品输出，返回自身以支持链式调用 */
+        public Recipe outputItems(ItemStack... stacks) {
+            for (ItemStack stack : stacks) {
+                outputItems = addToArray(outputItems, stack);
+            }
+            return this;
+        }
+
+        /** 添加单个液体输出，返回自身以支持链式调用 */
+        public Recipe outputLiquid(Liquid liquid, float amount) {
+            outputLiquids = addToArray(outputLiquids, new LiquidStack(liquid, amount));
+            return this;
+        }
+
+        /** 添加多个液体输出，返回自身以支持链式调用 */
+        public Recipe outputLiquids(LiquidStack... stacks) {
+            for (LiquidStack stack : stacks) {
+                outputLiquids = addToArray(outputLiquids, stack);
+            }
+            return this;
+        }
+
+        /** 设置电力输出，返回自身以支持链式调用 */
+        public Recipe outputPower(float power) {
+            outputPower = power;
+            return this;
+        }
+
+        /** 设置热量输出，返回自身以支持链式调用 */
+        public Recipe outputHeat(float heat) {
+            outputHeat = heat;
+            return this;
+        }
+
+        /** 添加单个载荷输出，返回自身以支持链式调用 */
+        public Recipe outputPayload(UnlockableContent item, int amount) {
+            outputPayloads = addToArray(outputPayloads, new PayloadStack(item, amount));
+            return this;
+        }
+
+        /** 添加多个载荷输出，返回自身以支持链式调用 */
+        public Recipe outputPayloads(PayloadStack... stacks) {
+            for (PayloadStack stack : stacks) {
+                outputPayloads = addToArray(outputPayloads, stack);
+            }
+            return this;
+        }
+
+        // ============ 辅助方法 ============
+
+        /** 动态扩展数组，正确处理数组类型 */
+        @SuppressWarnings("unchecked")
+        private static <T> T[] addToArray(T[] original, T element) {
+            if (original == null) {
+                T[] arr = (T[]) java.lang.reflect.Array.newInstance(element.getClass(), 1);
+                arr[0] = element;
+                return arr;
+            }
+            T[] newArray = java.util.Arrays.copyOf(original, original.length + 1);
+            newArray[original.length] = element;
+            return newArray;
         }
     }
 
@@ -626,75 +868,46 @@ public class MultiCrafterMomiji extends Block {
 
     //region 建筑实体
 
-    /**
-     * 多配方工厂建筑实体，同时实现 {@link HeatBlock} 和 {@link HeatConsumer} 接口，
-     * 以支持热量输入和输出。
-     */
     public class MultiCrafterBuild extends Building implements HeatBlock, HeatConsumer {
 
-        // ---------- 配方相关 ----------
-        /** 当前配方索引（序列化/配置用） */
         public int currentRecipe;
-        /** 当前配方的缓存对象（运行时直接使用，避免数组查找） */
         private Recipe currentRecipeObj;
 
-        // ---------- 配方派生属性缓存 ----------
-        /** 当前配方制造时间（tick） */
         public float craftTime = 80f;
-        /** 是否允许超速 */
         public boolean canOverdrive = true;
-        /** 效率平滑过渡速度 */
         public float warmupSpeed = 0.019f;
-        /** 当前实际的制作特效 */
         public @Nullable Effect currentCraftEffect;
-        /** 当前实际的更新特效 */
         public @Nullable Effect currentUpdateEffect;
-        /** 当前实际的特效触发概率 */
         public float currentUpdateEffectChance = 0.04f;
-        /** 当前实际的特效散布范围 */
         public float currentUpdateEffectSpread = 4f;
-        /** 当前实际的切换特效 */
         public @Nullable Effect currentSwitchEffect;
-        /** 当前配方是否生产单位（影响 unitCost / unitBuildSpeed） */
         public boolean isUnitRecipe;
 
-        // ---------- 热量 ----------
-        public float heat = 0f;
-        public float heatOutput = 0f;
-        /** 侧面热量记录 */
+        public float heat;
+        public float heatOutput;
         public float[] sideHeat = new float[4];
 
-        // ---------- 生产进度 ----------
         public float progress;
         public float totalProgress;
         public float warmup;
-        /** 热量输出的平滑速率 */
         public float warmupRate = 0.15f;
 
-        // ---------- 载荷 ----------
-        /** 输入的载荷存储（类似原版 PayloadSeq） */
-        public PayloadSeq blocks = new PayloadSeq();
-        /** 缓存当前配方输入载荷序列，避免重复构建 */
-        private final Seq<PayloadStack> cachedInputPayloadSeq = new Seq<>();
-        /** 待输出载荷队列 */
-        public final Seq<Payload> outputPayloadQueue = new Seq<>();
-        /** 用于判断输入载荷序列是否需要重建 */
-        private Recipe lastRecipe = null;
+        public float attrsum;
 
-        // ---------- 载荷移动动画 ----------
+        public PayloadSeq inputPayloads = new PayloadSeq();
+        private final Seq<PayloadStack> cachedInputPayloadSeq = new Seq<>();
+        public final Seq<Payload> outputPayloads = new Seq<>();
+        private Recipe lastRecipe;
+
         private final Vec2 payVector = new Vec2();
-        private float payRotation = 0f;
+        private float payRotation;
         public final float payloadSpeed = 0.7f;
         public final float payloadRotateSpeed = 5f;
 
         // ============ 公共访问 ============
 
-        /** 返回当前配方的缓存对象（可能为 null） */
-        public Recipe getCurrentRecipe() {
-            return currentRecipeObj;
-        }
+        public Recipe getCurrentRecipe() { return currentRecipeObj; }
 
-        /** 动态获取当前配方所需的输入载荷序列（带缓存） */
         public Seq<PayloadStack> getInputPayloadSeq() {
             if (lastRecipe == currentRecipeObj) return cachedInputPayloadSeq;
             lastRecipe = currentRecipeObj;
@@ -708,18 +921,15 @@ public class MultiCrafterMomiji extends Block {
 
         @Override
         public void updateTile() {
-            // 计算热量输入
             if (currentRecipeObj != null && currentRecipeObj.inputHeat > 0)
                 heat = calculateHeat(sideHeat);
 
             if (efficiency > 0) {
-                // 单位配方享受 unitBuildSpeed 加成
                 float buildMul = isUnitRecipe ? state.rules.unitBuildSpeed(team) : 1f;
                 progress += getProgressIncrease(craftTime) * buildMul;
                 warmup = Mathf.approachDelta(warmup, warmupTarget(), warmupSpeed);
                 totalProgress += warmup * delta();
 
-                // 平滑输出液体
                 if (currentRecipeObj != null && currentRecipeObj.outputLiquids != null) {
                     float inc = getProgressIncrease(1f);
                     for (LiquidStack output : currentRecipeObj.outputLiquids) {
@@ -727,32 +937,28 @@ public class MultiCrafterMomiji extends Block {
                     }
                 }
 
-                // 随机更新特效
-                if (wasVisible && currentUpdateEffect != null) {
-                    if (Mathf.chanceDelta(currentUpdateEffectChance)) {
-                        currentUpdateEffect.at(
-                                x + Mathf.range(size * currentUpdateEffectSpread),
-                                y + Mathf.range(size * currentUpdateEffectSpread)
-                        );
-                    }
+                if (wasVisible && currentUpdateEffect != null && Mathf.chanceDelta(currentUpdateEffectChance)) {
+                    currentUpdateEffect.at(
+                            x + Mathf.range(size * currentUpdateEffectSpread),
+                            y + Mathf.range(size * currentUpdateEffectSpread));
+                }
+                if (currentRecipeObj != null && currentRecipeObj.updateSound != null && Mathf.chanceDelta(currentUpdateEffectChance)) {
+                    currentRecipeObj.updateSound.at(x, y);
                 }
             } else {
                 warmup = Mathf.approachDelta(warmup, 0f, warmupSpeed);
             }
 
-            // 热量输出平滑
             if (currentRecipeObj != null && currentRecipeObj.outputHeat > 0)
                 heatOutput = Mathf.approachDelta(heatOutput, currentRecipeObj.outputHeat * efficiency, warmupRate * delta());
             else
                 heatOutput = Mathf.approachDelta(heatOutput, 0, warmupRate * delta());
 
-            // 输出载荷运动与制造完成检测
             moveOutPayload();
             if (progress >= 1f) craft();
             dumpOutputs();
         }
 
-        /** 热量目标比例 */
         public float warmupTarget() {
             if (currentRecipeObj == null || currentRecipeObj.inputHeat <= 0) return 1f;
             return Mathf.clamp(heat / currentRecipeObj.inputHeat);
@@ -760,11 +966,10 @@ public class MultiCrafterMomiji extends Block {
 
         // ============ 载荷输出 ============
 
-        /** 推动输出队列中的载荷向出口移动 */
         public void moveOutPayload() {
-            if (outputPayloadQueue.isEmpty()) return;
+            if (outputPayloads.isEmpty()) return;
 
-            Payload p = outputPayloadQueue.first();
+            Payload p = outputPayloads.first();
             p.update(null, this);
 
             Vec2 dest = Tmp.v1.trns(rotdeg(), size * tilesize / 2f);
@@ -784,7 +989,7 @@ public class MultiCrafterMomiji extends Block {
                 payVector.clamp(-size * tilesize / 2f, -size * tilesize / 2f, size * tilesize / 2f, size * tilesize / 2f);
                 if (canMove) {
                     if (movePayload(p)) {
-                        outputPayloadQueue.remove(0);
+                        outputPayloads.remove(0);
                         payVector.setZero();
                     }
                 } else if (canDump) {
@@ -792,7 +997,7 @@ public class MultiCrafterMomiji extends Block {
                     float ty = Angles.trnsy(p.rotation(), 0.1f);
                     p.set(p.x() + tx, p.y() + ty, p.rotation());
                     if (p.dump()) {
-                        outputPayloadQueue.remove(0);
+                        outputPayloads.remove(0);
                         payVector.setZero();
                     } else {
                         p.set(p.x() - tx, p.y() - ty, p.rotation());
@@ -803,26 +1008,22 @@ public class MultiCrafterMomiji extends Block {
 
         // ============ 生产完成 ============
 
-        /** 生产完成：消耗原料，生成物品/载荷，播放特效，触发事件 */
         public void craft() {
             if (currentRecipeObj == null) return;
             consume();
 
-            // 输出物品
             if (currentRecipeObj.outputItems != null) {
                 for (ItemStack output : currentRecipeObj.outputItems) {
                     for (int i = 0; i < output.amount; i++) offload(output.item);
                 }
             }
 
-            // 输出载荷
             if (currentRecipeObj.outputPayloads != null) {
                 for (PayloadStack stack : currentRecipeObj.outputPayloads) {
                     for (int i = 0; i < stack.amount; i++) {
                         Payload p = createPayload(stack.item);
                         if (p != null) {
-                            outputPayloadQueue.add(p);
-                            // 单位负载触发 UnitCreateEvent
+                            outputPayloads.add(p);
                             if (p instanceof UnitPayload) {
                                 Events.fire(new UnitCreateEvent(((UnitPayload) p).unit, this));
                             }
@@ -835,14 +1036,11 @@ public class MultiCrafterMomiji extends Block {
                 }
             }
 
-            // 制作特效
-            if (currentCraftEffect != null && wasVisible) {
-                currentCraftEffect.at(x, y);
-            }
+            if (currentCraftEffect != null && wasVisible) currentCraftEffect.at(x, y);
+            if (currentRecipeObj.craftSound != null && wasVisible) currentRecipeObj.craftSound.at(x, y);
             progress %= 1f;
         }
 
-        /** 创建载荷对象 */
         public Payload createPayload(UnlockableContent content) {
             if (content instanceof Block b) return new BuildPayload(b, team);
             else if (content instanceof UnitType unitType) return new UnitPayload(unitType.create(team));
@@ -851,18 +1049,15 @@ public class MultiCrafterMomiji extends Block {
 
         // ============ 输出 ============
 
-        /** 每帧尝试输出物品和液体 */
         public void dumpOutputs() {
             if (currentRecipeObj == null) return;
 
-            // 物品输出受 timer 控制
             if (currentRecipeObj.outputItems != null && timer(timerDump, dumpTime / timeScale)) {
                 for (ItemStack output : currentRecipeObj.outputItems) {
                     dump(output.item);
                 }
             }
 
-            // 液体输出每帧无限制
             if (currentRecipeObj.outputLiquids != null) {
                 for (int i = 0; i < currentRecipeObj.outputLiquids.length; i++) {
                     int dir = currentRecipeObj.liquidOutputDirections.length > i
@@ -876,6 +1071,8 @@ public class MultiCrafterMomiji extends Block {
 
         @Override
         public void buildConfiguration(Table table) {
+            showPayloadPanel();
+
             table.clearChildren();
             table.background(Styles.black6);
             table.top().left();
@@ -884,7 +1081,6 @@ public class MultiCrafterMomiji extends Block {
             for (int i = 0; i < recipes.length; i++) {
                 final int idx = i;
                 Recipe rec = recipes[i];
-                final int recipeNum = i + 1;
 
                 TextButton btn = new TextButton("");
                 btn.clearChildren();
@@ -898,12 +1094,10 @@ public class MultiCrafterMomiji extends Block {
                     disabledFontColor = Color.gray;
                 }});
 
+                int finalI = i;
                 btn.table(btnTable -> {
                     btnTable.left().defaults().left();
-                    btnTable.add(String.valueOf(recipeNum))
-                            .width(24f).right()
-                            .padRight(8f).padLeft(8f)
-                            .color(Color.lightGray);
+                    btnTable.add(String.valueOf(finalI + 1)).width(24f).right().padRight(8f).padLeft(8f).color(Color.lightGray);
 
                     btnTable.table(iconRow -> {
                         iconRow.left().defaults().left();
@@ -955,9 +1149,8 @@ public class MultiCrafterMomiji extends Block {
             return true;
         }
 
-        // ============ 配方切换与同步 ============
+        // ============ 配方切换 ============
 
-        /** 切换配方索引，重置进度和热量输出，播放特效 */
         private void switchRecipe(int idx) {
             if (idx < -1 || idx >= recipes.length) idx = -1;
             if (currentRecipe == idx) return;
@@ -968,9 +1161,9 @@ public class MultiCrafterMomiji extends Block {
 
             Effect effect = currentSwitchEffect != null ? currentSwitchEffect : switchEffect;
             effect.at(x, y, block.size);
+            updateProximity();
         }
 
-        /** 根据 currentRecipe 索引一次性同步所有配方派生属性及缓存对象 */
         private void refreshFromRecipe() {
             Recipe rec = (currentRecipe >= 0 && currentRecipe < recipes.length) ? recipes[currentRecipe] : null;
             currentRecipeObj = rec;
@@ -990,7 +1183,7 @@ public class MultiCrafterMomiji extends Block {
                 canOverdrive = !(rec.outputHeat > 0) && rec.allowOverdrive;
                 warmupSpeed = rec.warmupSpeed;
                 currentCraftEffect = rec.craftEffect != null ? rec.craftEffect : craftEffect;
-                currentUpdateEffect = rec.updateEffect;
+                currentUpdateEffect = rec.updateEffect != null ? rec.updateEffect : updateEffect;
                 currentUpdateEffectChance = rec.updateEffectChance;
                 currentUpdateEffectSpread = rec.updateEffectSpread;
                 currentSwitchEffect = rec.switchEffect != null ? rec.switchEffect : switchEffect;
@@ -998,42 +1191,34 @@ public class MultiCrafterMomiji extends Block {
                 boolean unit = false;
                 if (rec.outputPayloads != null) {
                     for (PayloadStack ps : rec.outputPayloads) {
-                        if (ps.item instanceof UnitType) {
-                            unit = true;
-                            break;
-                        }
+                        if (ps.item instanceof UnitType) { unit = true; break; }
                     }
                 }
                 isUnitRecipe = unit;
             }
-            lastRecipe = null; // 强制重建输入载荷序列
+            lastRecipe = null;
         }
 
-        /** 计算受所有因素影响的实际每秒进度（用于进度条显示） */
         public float getActualProgressPerSecond() {
             if (currentRecipeObj == null) return 0f;
-            float inc = getProgressIncrease(craftTime);   // 已含效率、液体缩放、超速
+            float inc = getProgressIncrease(craftTime);
             if (isUnitRecipe) inc *= state.rules.unitBuildSpeed(team);
-            return inc / Time.delta * 60f; // 转换 tick 为秒
+            return inc / Time.delta * 60f;
         }
 
-        // ============ 是否可生产 ============
+        // ============ 生产条件 ============
 
         @Override
         public boolean shouldConsume() {
             if (currentRecipeObj == null) return false;
-
-            // 需要热量但无热源时不消耗
             if (currentRecipeObj.inputHeat > 0 && heat <= 0) return false;
 
-            // 物品输出空间检查
             if (currentRecipeObj.outputItems != null) {
                 for (ItemStack s : currentRecipeObj.outputItems) {
                     if (items.get(s.item) + s.amount > itemCapacity) return false;
                 }
             }
 
-            // 液体输出空间检查
             if (currentRecipeObj.outputLiquids != null && !ignoreLiquidFullness) {
                 boolean allFull = true;
                 for (LiquidStack s : currentRecipeObj.outputLiquids) {
@@ -1044,16 +1229,14 @@ public class MultiCrafterMomiji extends Block {
                 if (allFull) return false;
             }
 
-            // 载荷输出队列限制
             if (currentRecipeObj.outputPayloads != null) {
                 int limit = currentRecipeObj.outputPayloadQueueLimit;
                 if (limit == -1) {
-                    if (!outputPayloadQueue.isEmpty()) return false;
+                    if (!outputPayloads.isEmpty()) return false;
                 } else if (limit > 0) {
-                    int currentCount = outputPayloadQueue.size;
                     int toProduce = 0;
                     for (PayloadStack stack : currentRecipeObj.outputPayloads) toProduce += stack.amount;
-                    if (currentCount + toProduce > limit) return false;
+                    if (outputPayloads.size + toProduce > limit) return false;
                 } else {
                     return false;
                 }
@@ -1068,12 +1251,12 @@ public class MultiCrafterMomiji extends Block {
         public void write(Writes w) {
             super.write(w);
             w.i(currentRecipe);
-            blocks.write(w);
+            inputPayloads.write(w);
             w.f(payVector.x);
             w.f(payVector.y);
             w.f(payRotation);
-            w.i(outputPayloadQueue.size);
-            for (Payload p : outputPayloadQueue) Payload.write(p, w);
+            w.i(outputPayloads.size);
+            for (Payload p : outputPayloads) Payload.write(p, w);
             w.f(heatOutput);
             w.f(heat);
             w.f(progress);
@@ -1085,24 +1268,23 @@ public class MultiCrafterMomiji extends Block {
             super.read(r, revision);
             currentRecipe = r.i();
             if (currentRecipe >= recipes.length || currentRecipe < -1) currentRecipe = -1;
-            blocks.read(r);
+            inputPayloads.read(r);
             payVector.set(r.f(), r.f());
             payRotation = r.f();
-            outputPayloadQueue.clear();
+            outputPayloads.clear();
             int size = r.i();
             for (int i = 0; i < size; i++) {
                 Payload p = Payload.read(r);
-                if (p != null) outputPayloadQueue.add(p);
+                if (p != null) outputPayloads.add(p);
             }
             heatOutput = r.f();
             heat = r.f();
             progress = r.f();
             warmup = r.f();
-
             refreshFromRecipe();
         }
 
-        // ============ 效率与热量相关接口 ============
+        // ============ 效率与热量接口 ============
 
         @Override
         public float efficiencyScale() {
@@ -1113,40 +1295,27 @@ public class MultiCrafterMomiji extends Block {
 
         @Override
         public float heat() { return heatOutput; }
-
         @Override
-        public float heatFrac() {
-            return (currentRecipeObj != null && currentRecipeObj.outputHeat > 0) ? heatOutput / currentRecipeObj.outputHeat : 0f;
-        }
-
+        public float heatFrac() { return (currentRecipeObj != null && currentRecipeObj.outputHeat > 0) ? heatOutput / currentRecipeObj.outputHeat : 0f; }
         @Override
         public float[] sideHeat() { return sideHeat; }
-
         @Override
-        public float heatRequirement() {
-            return currentRecipeObj != null ? currentRecipeObj.inputHeat : 0f;
-        }
+        public float heatRequirement() { return currentRecipeObj != null ? currentRecipeObj.inputHeat : 0f; }
 
-        // ============ 基本重写 ============
+        // ============ 重写方法 ============
 
         @Override
         public void update() {
-            if ((timeScaleDuration -= Time.delta) <= 0f || !canOverdrive) {
-                timeScale = 1f;
-            }
+            if ((timeScaleDuration -= Time.delta) <= 0f || !canOverdrive) timeScale = 1f;
             if (!headless && block.ambientSound != Sounds.none && shouldAmbientSound()) {
                 control.sound.loop(block.ambientSound, this, block.ambientSoundVolume * ambientVolume());
             }
             updateConsumption();
-            if (enabled || !block.noUpdateDisabled) {
-                updateTile();
-            }
+            if (enabled || !block.noUpdateDisabled) updateTile();
         }
 
         @Override
-        public Object config() {
-            return currentRecipe;
-        }
+        public Object config() { return currentRecipe; }
 
         @Override
         public void placed() {
@@ -1177,24 +1346,40 @@ public class MultiCrafterMomiji extends Block {
         @Override
         public float totalProgress() { return totalProgress; }
         @Override
-        public float getPowerProduction() {
-            return (currentRecipeObj != null && currentRecipeObj.outputPower > 0) ? currentRecipeObj.outputPower * efficiency : 0f;
-        }
+        public float getPowerProduction() { return (currentRecipeObj != null && currentRecipeObj.outputPower > 0) ? currentRecipeObj.outputPower * efficiency : 0f; }
         @Override
         public float progress() { return Mathf.clamp(progress); }
 
         @Override
         public float getProgressIncrease(float baseTime) {
-            if (currentRecipeObj == null || currentRecipeObj.outputLiquids == null || ignoreLiquidFullness) {
-                return super.getProgressIncrease(baseTime);
+            float scale = 1f;
+            if (currentRecipeObj != null && currentRecipeObj.outputLiquids != null && !ignoreLiquidFullness) {
+                float scaling = 1f, max = 0f;
+                for (var s : currentRecipeObj.outputLiquids) {
+                    float value = (liquidCapacity - liquids.get(s.liquid)) / (s.amount * edelta());
+                    scaling = Math.min(scaling, value);
+                    max = Math.max(max, value);
+                }
+                scale = dumpExtraLiquid ? Math.min(max, 1f) : scaling;
             }
-            float scaling = 1f, max = 0f;
-            for (var s : currentRecipeObj.outputLiquids) {
-                float value = (liquidCapacity - liquids.get(s.liquid)) / (s.amount * edelta());
-                scaling = Math.min(scaling, value);
-                max = Math.max(max, value);
-            }
-            return super.getProgressIncrease(baseTime) * (dumpExtraLiquid ? Math.min(max, 1f) : scaling);
+            return super.getProgressIncrease(baseTime) * scale * efficiencyMultiplier();
+        }
+
+        @Override
+        public void onProximityUpdate() {
+            super.onProximityUpdate();
+            if (attribute != null) attrsum = sumAttribute(attribute, tile.x, tile.y);
+        }
+
+        public float efficiencyMultiplier() {
+            if (attribute == null) return 1f;
+            return baseEfficiency + Math.min(maxBoost, boostScale * attrsum) + attribute.env();
+        }
+
+        @Override
+        public void pickedUp() {
+            attrsum = 0f;
+            warmup = 0f;
         }
 
         // ============ 载荷输入接口 ============
@@ -1206,9 +1391,9 @@ public class MultiCrafterMomiji extends Block {
             for (var stack : currentRecipeObj.inputPayloads) {
                 if (stack.item == content) {
                     if (currentRecipeObj.inputPayloadCapacity != 0)
-                        return blocks.get(content) < currentRecipeObj.inputPayloadCapacity;
+                        return inputPayloads.get(content) < currentRecipeObj.inputPayloadCapacity;
                     else
-                        return blocks.get(content) < stack.amount * currentRecipeObj.inputPayloadMultiplier;
+                        return inputPayloads.get(content) < stack.amount * currentRecipeObj.inputPayloadMultiplier;
                 }
             }
             return false;
@@ -1218,56 +1403,267 @@ public class MultiCrafterMomiji extends Block {
         public void handlePayload(Building source, Payload payload) {
             var content = payload.content();
             Fx.payloadDeposit.at(x, y);
-            blocks.add(content, 1);
+            inputPayloads.add(content, 1);
             if (payload instanceof UnitPayload up) up.unit.remove();
         }
 
         @Override
-        public Payload getPayload() {
-            return outputPayloadQueue.isEmpty() ? null : outputPayloadQueue.first();
-        }
-
+        public Payload getPayload() { return outputPayloads.isEmpty() ? null : outputPayloads.first(); }
         @Override
-        public Payload takePayload() {
-            if (outputPayloadQueue.isEmpty()) return null;
-            return outputPayloadQueue.remove(0);
-        }
-
+        public Payload takePayload() { return outputPayloads.isEmpty() ? null : outputPayloads.remove(0); }
         @Override
-        public PayloadSeq getPayloads() {
-            return blocks;
-        }
+        public PayloadSeq getPayloads() { return inputPayloads; }
+
+        // ============ 逻辑控制 ============
 
         @Override
         public Object senseObject(LAccess sensor) {
-            if (sensor == LAccess.config) {
-                return currentRecipe; // 当前配方索引
-            }
+            if (sensor == LAccess.config) return currentRecipe;
             return super.senseObject(sensor);
+        }
+
+        @Override
+        public double sense(LAccess sensor) {
+            if (sensor == LAccess.progress) return progress();
+            if (sensor == LAccess.totalLiquids && currentRecipeObj != null
+                    && currentRecipeObj.outputLiquids != null && currentRecipeObj.outputLiquids.length > 0) {
+                return liquids.get(currentRecipeObj.outputLiquids[0].liquid);
+            }
+            return super.sense(sensor);
         }
 
         @Override
         public void control(LAccess type, double p1, double p2, double p3, double p4) {
             if (type == LAccess.config) {
                 int idx = (int) p1;
-                if (idx >= -1 && idx < recipes.length) {
-                    switchRecipe(idx);
-                }
+                if (idx >= -1 && idx < recipes.length) switchRecipe(idx);
                 return;
             }
             super.control(type, p1, p2, p3, p4);
         }
 
+        // ============ 渲染 ============
+
+        @Override
+        public void draw() {
+            drawer.draw(this);
+
+            if (currentRecipeObj != null && currentRecipeObj.outputPayloads != null) {
+                for (PayloadStack stack : currentRecipeObj.outputPayloads) {
+                    if (stack.item instanceof UnitType unitType) {
+                        Draw.draw(Layer.blockOver, () ->
+                                Drawf.construct(this, unitType, rotdeg() - 90f, progress, 1f, totalProgress));
+                        break;
+                    }
+                }
+            }
+
+            if (!outputPayloads.isEmpty()) {
+                Draw.z(Layer.blockOver);
+                outputPayloads.first().draw();
+            }
+        }
+
+        @Override
+        public void drawLight() {
+            super.drawLight();
+            drawer.drawLight(this);
+        }
+
+        @Override
+        public boolean shouldAmbientSound() {
+            return efficiency > 0;
+        }
+
+        // ============ 载荷面板 ============
+
+        private @Nullable Table payloadPanel;
+        private float payloadEmptyTime;
+        private final Seq<UnlockableContent> displayedTypes = new Seq<>();
+        private final ObjectFloatMap<UnlockableContent> shrinkHoldTimes = new ObjectFloatMap<>();
+
+        private void showPayloadPanel() {
+            if (payloadPanel != null && payloadPanel.getScene() != null) return;
+
+            payloadPanel = new Table(Tex.inventory);
+            payloadPanel.touchable = Touchable.disabled;
+            payloadPanel.setTransform(true);
+            payloadPanel.margin(4f);
+
+            rebuildPayloadPanel(true);
+            if (payloadPanel == null) return;
+
+            payloadPanel.setScale(0f, 1f);
+            payloadPanel.actions(Actions.scaleTo(1f, 1f, 0.07f, Interp.pow3Out));
+            payloadPanel.visible = true;
+            ui.hudGroup.addChild(payloadPanel);
+            positionPayloadPanel();
+
+            payloadEmptyTime = 0f;
+            shrinkHoldTimes.clear();
+
+            payloadPanel.update(() -> {
+                if (!isValid() || state.isMenu() || control.input.config.getSelected() != this) {
+                    hidePayloadPanel();
+                    return;
+                }
+
+                ObjectMap<UnlockableContent, Integer> current = collectAllPayloads();
+                boolean empty = current.isEmpty();
+
+                if (empty) {
+                    payloadEmptyTime += Time.delta;
+                    if (payloadEmptyTime >= 120f) {
+                        hidePayloadPanel();
+                        return;
+                    }
+                } else {
+                    payloadEmptyTime = 0f;
+
+                    boolean needRebuild = false;
+
+                    // 检查新出现的载荷类型
+                    for (var entry : current.entries()) {
+                        if (!displayedTypes.contains(entry.key)) {
+                            needRebuild = true;
+                            break;
+                        }
+                    }
+
+                    // 更新已显示载荷类型的消失计时器
+                    for (int i = displayedTypes.size - 1; i >= 0; i--) {
+                        UnlockableContent type = displayedTypes.get(i);
+                        if (current.containsKey(type)) {
+                            shrinkHoldTimes.put(type, 0f);
+                        } else {
+                            float time = shrinkHoldTimes.get(type, 0f) + Time.delta;
+                            shrinkHoldTimes.put(type, time);
+                            if (time >= 120f) {
+                                needRebuild = true;
+                            }
+                        }
+                    }
+
+                    if (needRebuild) {
+                        rebuildPayloadPanel(false);
+                    }
+                }
+
+                positionPayloadPanel();
+            });
+        }
+
+        private void rebuildPayloadPanel(boolean initial) {
+            if (payloadPanel == null) return;
+
+            ObjectMap<UnlockableContent, Integer> current = collectAllPayloads();
+
+            // 更新显示列表：包含当前存在的和仍在延迟显示中的类型
+            displayedTypes.clear();
+            for (var entry : current.entries()) {
+                displayedTypes.add(entry.key);
+            }
+            for (UnlockableContent type : shrinkHoldTimes.keys()) {
+                if (!displayedTypes.contains(type) && shrinkHoldTimes.get(type, 0f) < 120f) {
+                    displayedTypes.add(type);
+                }
+            }
+
+            if (displayedTypes.isEmpty()) {
+                payloadPanel.clearChildren();
+                payloadEmptyTime = 0f;
+                if (initial) {
+                    payloadPanel.remove();
+                    payloadPanel = null;
+                }
+                return;
+            }
+
+            payloadPanel.clearChildren();
+            int cols = 3, index = 0;
+            for (UnlockableContent c : displayedTypes) {
+                Stack stack = new Stack();
+                stack.add(new Image(c.uiIcon).setScaling(Scaling.fit));
+                stack.add(new Table(t -> t.left().bottom()
+                        .label(() -> UI.formatAmount(getPayloadCount(c)))
+                        .style(Styles.outlineLabel)));
+                payloadPanel.add(stack).size(40f).pad(4f);
+                if (++index % cols == 0) payloadPanel.row();
+            }
+        }
+
+        private int getPayloadCount(UnlockableContent content) {
+            int count = inputPayloads.get(content);
+            for (Payload p : outputPayloads) {
+                if (p instanceof UnitPayload up && up.unit.type == content) count++;
+                else if (p instanceof BuildPayload bp && bp.block() == content) count++;
+            }
+            return count;
+        }
+
+        private ObjectMap<UnlockableContent, Integer> collectAllPayloads() {
+            ObjectMap<UnlockableContent, Integer> map = new ObjectMap<>();
+            // 遍历配方中定义的所有载荷类型（而不是全局内容）
+            for (UnlockableContent type : allPayloadTypes) {
+                int count = inputPayloads.get(type);
+                if (count > 0) map.put(type, count);
+            }
+            // 输出队列中的载荷也需要统计
+            for (Payload p : outputPayloads) {
+                if (p instanceof UnitPayload up) {
+                    UnitType unitType = up.unit.type;
+                    if (allPayloadTypes.contains(unitType)) {
+                        map.put(unitType, map.get(unitType, 0) + 1);
+                    }
+                } else if (p instanceof BuildPayload bp) {
+                    Block block = bp.block();
+                    if (allPayloadTypes.contains(block)) {
+                        map.put(block, map.get(block, 0) + 1);
+                    }
+                }
+            }
+            return map;
+        }
+
+        private void positionPayloadPanel() {
+            if (payloadPanel == null) return;
+            if (payloadPanel.parent != ui.hudGroup) {
+                payloadPanel.remove();
+                ui.hudGroup.addChild(payloadPanel);
+            }
+            float offsetY = 54f;
+            Vec2 v = Core.input.mouseScreen(x + size * tilesize / 2f, y + size * tilesize / 2f);
+            payloadPanel.pack();
+            payloadPanel.setPosition(v.x, v.y + offsetY, Align.topLeft);
+        }
+
+        private void hidePayloadPanel() {
+            if (payloadPanel == null) return;
+            Table panel = payloadPanel;
+            payloadPanel = null;
+            displayedTypes.clear();
+            shrinkHoldTimes.clear();
+            panel.actions(Actions.sequence(
+                    Actions.scaleTo(0f, 1f, 0.06f, Interp.pow3Out),
+                    Actions.run(panel::remove)
+            ));
+        }
+
+        @Override
+        public void onRemoved() {
+            super.onRemoved();
+            if (payloadPanel != null) {
+                payloadPanel.clearActions();
+                payloadPanel.remove();
+                payloadPanel = null;
+            }
+        }
     }
 
     //endregion
 
     //region 动态电力消费者
 
-    /**
-     * 动态电力消费者：无电力需求的配方不消耗电力、效率恒为 1；
-     * 有电力需求的配方则按电网状态决定效率。
-     */
     public static class DynamicConsumePower extends ConsumePower {
         public DynamicConsumePower(float usage) {
             super(usage, 0f, false);
@@ -1286,12 +1682,10 @@ public class MultiCrafterMomiji extends Block {
         public float efficiency(Building entity) {
             if (entity instanceof MultiCrafterBuild build) {
                 Recipe r = build.getCurrentRecipe();
-                if (r == null || r.inputPower <= 0) return 1f; // 不需要电，满效率
+                if (r == null || r.inputPower <= 0) return 1f;
             }
             return entity.power.status;
         }
-
-        // 非缓冲模式无需 trigger 操作
     }
 
     //endregion

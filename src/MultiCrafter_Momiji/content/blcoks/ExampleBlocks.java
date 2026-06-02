@@ -38,18 +38,18 @@ public class ExampleBlocks {
                         allowOverdrive = true;
                     }},
                     new Recipe() {{
-                        inputItem = new ItemStack(Items.beryllium, 1);
-                        inputLiquid = new LiquidStack(Liquids.ozone, 2f / 60f);
-                        inputPower = 30f / 60f;
+                        consumeItem(Items.beryllium, 1);
+                        consumeLiquid(Liquids.ozone, 2f / 60f);
+                        consumePower(30f / 60f);
 
-                        outputItem = new ItemStack(Items.oxide, 1);
-                        outputHeat = 5f;
+                        outputItems(ItemStack.with(Items.oxide, 1));
+                        outputHeat(5f);
 
                         craftEffect = Fx.none;
                         craftTime = 60f * 2f;
                         allowOverdrive = false;
                     }},
-                    new  Recipe() {{
+                    new Recipe() {{
                         inputItems = ItemStack.with(Items.tungsten, 2, Items.graphite, 3);
                         inputHeat = 40f;
 
@@ -75,7 +75,7 @@ public class ExampleBlocks {
 
                         craftTime = 60f * 15f;
                     }},
-                    new  Recipe() {{
+                    new Recipe() {{
                         inputPayloads = PayloadStack.with(Blocks.canvas, 3);
                         inputPower = 90f / 60f;
 
@@ -84,7 +84,7 @@ public class ExampleBlocks {
                         inputPayloadCapacity = 10;
                         craftTime = 60f * 35f;
                     }},
-                    new  Recipe() {{
+                    new Recipe() {{
                         inputPayloads = PayloadStack.with(Blocks.conveyor, 2);
 
                         outputPayloads = PayloadStack.with(Blocks.junction, 1);
