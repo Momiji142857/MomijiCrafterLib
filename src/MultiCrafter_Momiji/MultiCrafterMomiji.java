@@ -206,6 +206,8 @@ public class MultiCrafterMomiji extends Block {
             liquidCapacity = Mathf.round(10f * maxLiquidCap);
         }
 
+        if (rotate) drawArrow = true;
+
         // 载荷输入/输出标志
         boolean hasInputPayload = false;
         boolean hasOutputPayload = false;
