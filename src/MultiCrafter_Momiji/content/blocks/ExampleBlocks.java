@@ -24,6 +24,7 @@ public class ExampleBlocks {
             itemCapacity = 40;
             liquidCapacity = 30f;
             rotate = true;
+            alwaysUnlocked = true;
 
             recipes = new Recipe[] {
                     new Recipe() {{
