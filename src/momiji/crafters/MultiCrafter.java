@@ -1,4 +1,4 @@
-package MultiCrafter_Momiji;
+package momiji.crafters;
 
 import arc.Core;
 import arc.Events;
@@ -64,7 +64,7 @@ import static mindustry.Vars.*;
  * @see mindustry.world.blocks.production.GenericCrafter
  * @author Momiji142857 (with DeepSeek)
  */
-public class MultiCrafterMomiji extends Block {
+public class MultiCrafter extends Block {
 
     //region 方块公共属性
 
@@ -108,7 +108,7 @@ public class MultiCrafterMomiji extends Block {
 
     //endregion
 
-    public MultiCrafterMomiji(String name) {
+    public MultiCrafter(String name) {
         super(name);
         update = true;
         solid = true;

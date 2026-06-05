@@ -1,6 +1,6 @@
-package MultiCrafter_Momiji.content.blocks;
+package momiji.crafters.content.blocks;
 
-import MultiCrafter_Momiji.MultiCrafterMomiji;
+import momiji.crafters.MultiCrafter;
 import mindustry.content.*;
 import mindustry.entities.effect.RadialEffect;
 import mindustry.type.Category;
@@ -14,7 +14,7 @@ public class ExampleBlocks {
 
     public static void load() {
 
-        testFactory = new MultiCrafterMomiji("test-factory") {{
+        testFactory = new MultiCrafter("test-factory") {{
             requirements(Category.crafting, ItemStack.with(Items.copper, 20, Items.lead, 20));
             size = 3;
             health = 300;
