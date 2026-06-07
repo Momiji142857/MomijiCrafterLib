@@ -542,11 +542,11 @@ public class MultiCrafter extends Block {
 
                     String timeStr;
                     if (remainSec >= 60f) {
-                        timeStr = Strings.autoFixed(remainSec / 60f, 2) + "min";
+                        timeStr = Strings.autoFixed(remainSec / 60f, 2) + "[]min";
                     } else {
-                        timeStr = Strings.autoFixed(remainSec, 2) + "s";
+                        timeStr = Strings.autoFixed(remainSec, 2) + "[]s";
                     }
-                    return icon + " " + (int) (p * 100) + "% [orange]" + timeStr + "[]";
+                    return icon + " " + (int) (p * 100) + "% [orange]" + timeStr;
                 },
                 () -> Pal.ammo,
                 e::progress

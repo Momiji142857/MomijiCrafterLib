@@ -1,5 +1,6 @@
 package momiji.crafters.content.blocks;
 
+import momiji.crafters.ItemLiquidJunction;
 import momiji.crafters.MultiCrafter;
 import mindustry.content.*;
 import mindustry.entities.effect.RadialEffect;
@@ -8,9 +9,12 @@ import mindustry.type.ItemStack;
 import mindustry.type.LiquidStack;
 import mindustry.type.PayloadStack;
 import mindustry.world.Block;
+import momiji.crafters.OmniCrafter;
+
+import static mindustry.type.ItemStack.with;
 
 public class ExampleBlocks {
-    public static Block testFactory;
+    public static Block testFactory, testFactoryO, itemLiquidJunction;
 
     public static void load() {
 
@@ -98,6 +102,27 @@ public class ExampleBlocks {
                     }}
 
             };
+        }};
+
+        testFactoryO = new OmniCrafter("test-factory-o") {{
+            requirements(Category.crafting, with(Items.copper, 75, Items.lead, 30));
+
+            craftEffect = Fx.pulverizeMedium;
+            outputItem = new ItemStack(Items.graphite, 1);
+            craftTime = 90f;
+            size = 2;
+            hasItems = true;
+
+            consumeItem(Items.coal, 2);
+        }};
+
+        itemLiquidJunction = new ItemLiquidJunction("item-liquid-junction") {{
+            requirements(Category.distribution, with(Items.copper, 3, Items.graphite, 4, Items.metaglass, 8));
+            speed = 26;
+            capacity = 6;
+            health = 30;
+            buildCostMultiplier = 6f;
+            solid = false;
         }};
     }
 }

@@ -2,7 +2,7 @@
   "name": "multi-crafter-momiji",
   "displayName": "MultiCrafterLib_Momiji",
   "author": "[sky[]]Momiji142857[white[]] (with DeepSeek)",
-  "version": "1.1",
+  "version": "1.3",
   "minGameVersion": "154",
 
   "subtitle": "Multi-Crafter Library Example\n多配方库示例",
@@ -10,6 +10,6 @@
 
   "hidden": false,
   "java": true,
-  "main": "MultiCrafter_Momiji.LibMod",
+  "main": "momiji.crafters.LibMod",
   "repo": "Momiji142857/MultiCrafterLib_Momiji"
 }
