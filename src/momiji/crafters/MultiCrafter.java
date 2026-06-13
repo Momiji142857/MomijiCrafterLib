@@ -63,7 +63,7 @@ import static mindustry.Vars.*;
  * @see Block
  * @see mindustry.world.blocks.production.GenericCrafter
  * @author Momiji142857 (with DeepSeek)
- */
+ * */
 public class MultiCrafter extends Block {
 
     //region 方块公共属性
@@ -576,9 +576,10 @@ public class MultiCrafter extends Block {
     private static String fmtNum(float value) {
         float abs = Math.abs(value);
         if (abs >= 1000f) return UI.formatAmount((long) value);
-        if (abs >= 0.01f) return Strings.autoFixed(value, 2);
+        if (abs >= 10f) return Strings.fixed(value, 1);
+        if (abs >= 0.01f) return Strings.fixed(value, 2);
         if (abs == 0f) return "0";
-        if (abs < 0.000_001f) return "0.0";
+        if (abs < 0.000_001f) return "0.00";
         int exponent = (int) Math.floor(Math.log10(abs));
         float mantissa = (float) (value / Math.pow(10, exponent));
         mantissa = Mathf.round(mantissa, 2);

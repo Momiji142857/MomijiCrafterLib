@@ -1,5 +1,7 @@
 package momiji.crafters.content.blocks;
 
+import mindustry.gen.Sounds;
+import mindustry.world.draw.*;
 import momiji.crafters.ItemLiquidJunction;
 import momiji.crafters.MultiCrafter;
 import mindustry.content.*;
@@ -105,15 +107,31 @@ public class ExampleBlocks {
         }};
 
         testFactoryO = new OmniCrafter("test-factory-o") {{
-            requirements(Category.crafting, with(Items.copper, 75, Items.lead, 30));
+            requirements(Category.crafting, with(Items.tungsten, 120, Items.graphite, 80, Items.silicon, 100, Items.beryllium, 120));
+            size = 3;
 
-            craftEffect = Fx.pulverizeMedium;
-            outputItem = new ItemStack(Items.graphite, 1);
-            craftTime = 90f;
-            size = 2;
-            hasItems = true;
+            outputItem = new ItemStack(Items.oxide, 1);
+            researchCostMultiplier = 1.1f;
 
-            consumeItem(Items.coal, 2);
+            consumeLiquid(Liquids.ozone, 2f / 60f);
+            consumeItem(Items.beryllium);
+            consumePower(0.5f);
+
+            outputLiquid = new LiquidStack(Liquids.water, 0.01f);
+
+            rotateDraw = false;
+
+            drawer = new DrawMulti(new DrawRegion("-bottom"), new DrawLiquidRegion(), new DrawDefault(), new DrawHeatOutput());
+            ambientSound = Sounds.loopExtract;
+            ambientSoundVolume = 0.08f;
+
+            regionRotated1 = 2;
+            craftTime = 60f * 2f;
+            liquidCapacity = 30f;
+            heatOutput = 5f;
+
+            heatRequirement = 10f;
+            hasLiquids = true;
         }};
 
         itemLiquidJunction = new ItemLiquidJunction("item-liquid-junction") {{
