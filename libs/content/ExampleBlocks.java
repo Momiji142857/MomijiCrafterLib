@@ -1,23 +1,23 @@
 package momiji.content;
 
-import mindustry.gen.Sounds;
-import mindustry.world.draw.*;
-import mindustry.world.meta.Attribute;
-import mindustry.world.meta.Env;
-import momiji.*;
 import mindustry.content.*;
 import mindustry.entities.effect.RadialEffect;
+import mindustry.gen.Sounds;
 import mindustry.type.Category;
 import mindustry.type.ItemStack;
 import mindustry.type.LiquidStack;
 import mindustry.type.PayloadStack;
 import mindustry.world.Block;
+import mindustry.world.draw.*;
+import mindustry.world.meta.Attribute;
+import mindustry.world.meta.Env;
+import momiji.MultiCrafter;
 import momiji.type.*;
 
 import static mindustry.type.ItemStack.with;
 
 public class ExampleBlocks {
-    public static Block testFactory, testFactoryO, itemLiquidJunction, LinkedContainer, LinkedMechanicalDrill, itemBridgePro, laserDrillPro;
+    public static Block testFactory, testFactoryO, itemLiquidJunction, LinkedContainer, LinkedMechanicalDrill, itemBridgePro;
 
     public static void load() {
 
@@ -151,14 +151,14 @@ public class ExampleBlocks {
             buildCostMultiplier = 6f;
         }};
 
-        LinkedContainer = new LinkedBlock("Linked-container"){{
+        LinkedContainer = new LinkedBlock("linked-container"){{
             requirements(Category.effect, with(Items.titanium, 100));
             size = 2;
             itemCapacity = 300;
             scaledHealth = 55;
         }};
 
-        LinkedMechanicalDrill = new LinkedDrill("Linked-mechanical-drill"){{
+        LinkedMechanicalDrill = new LinkedDrill("linked-mechanical-drill"){{
             requirements(Category.production, with(Items.copper, 12));
             tier = 2;
             drillTime = 600;
@@ -180,19 +180,6 @@ public class ExampleBlocks {
             pulse = true;
             envEnabled |= Env.space;
             consumePower(0.30f);
-        }};
-
-        laserDrillPro = new CoolantDrill("laser-drill-pro") {{
-            requirements(Category.production, with(Items.copper, 35, Items.graphite, 30, Items.silicon, 30, Items.titanium, 20));
-            drillTime = 280;
-            size = 3;
-            hasPower = true;
-            tier = 4;
-            updateEffect = Fx.pulverizeMedium;
-            drillEffect = Fx.mineBig;
-
-            consumePower(1.10f);
-            consumeCoolant(0.08f).boost();
         }};
 
     }

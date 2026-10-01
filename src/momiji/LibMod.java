@@ -3,8 +3,10 @@ package momiji;
 import arc.util.Log;
 import mindustry.mod.ClassMap;
 import mindustry.mod.Mod;
-import momiji.content.ExampleBlocks;
-import momiji.type.*;
+import momiji.type.ItemLiquidJunction;
+import momiji.type.LinkedBlock;
+import momiji.type.LinkedDrill;
+import momiji.type.OmniCrafter;
 
 public class LibMod extends Mod {
 
@@ -21,11 +23,13 @@ public class LibMod extends Mod {
         ClassMap.classes.put("LinkedBlock", LinkedBlock.class);
         ClassMap.classes.put("LinkedDrill", LinkedDrill.class);
 
-        ExampleBlocks.load();
+        // ExampleBlocks.load();
     }
 
+    /*
     @Override
     public void init(){
-        // AtlasDebug.initKeyBinds();
+        AtlasDebug.initKeyBinds();
     }
+    */
 }

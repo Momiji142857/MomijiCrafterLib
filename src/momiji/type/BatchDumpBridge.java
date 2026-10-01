@@ -15,10 +15,10 @@ import static mindustry.Vars.content;
  * </ol>
  *
  * @author Momiji142857
- * @since 2026-08-01
  * @see ItemBridge
+ * @since 2026-08-01
  */
-public class BatchDumpBridge extends ItemBridge {
+public class BatchDumpBridge extends ItemBridge{
 
     /** 每逻辑 tick 传递物品数. */
     public float speed = -1f;
@@ -29,7 +29,7 @@ public class BatchDumpBridge extends ItemBridge {
     /** 统计显示 (物品/秒). 目前没有实际作用 */
     public float displayedSpeed = -1;
 
-    public BatchDumpBridge(String name) {
+    public BatchDumpBridge(String name){
         super(name);
         hasPower = false;
         hasItems = true;
@@ -37,74 +37,73 @@ public class BatchDumpBridge extends ItemBridge {
     }
 
     @Override
-    public void init() {
+    public void init(){
         // 检查数值合理性
-        if (transportTime <= 0f) {
-            if (speed < 0f) {
+        if(transportTime <= 0f){
+            if(speed < 0f){
                 transportTime = 2f;
-                Log.err("[BatchDumpBridge] Block '@' has neither transportTime nor speed configured. " +
-                        "Fallback to transportTime=2f (30 items/s). Please set one of them explicitly.", name);
-            } else {
+                Log.err("[BatchDumpBridge] Block '@' has neither transportTime nor speed configured. " + "Fallback to transportTime=2f (30 items/s). Please set one of them explicitly.", name);
+            }else{
                 transportTime = (speed == 0f) ? Float.MAX_VALUE : 1f / speed;
             }
         }
-        if (displayedSpeed < 0f) {
+        if(displayedSpeed < 0f){
             displayedSpeed = (transportTime == Float.MAX_VALUE) ? 0f : 60f / transportTime;
         }
 
         super.init();
     }
 
-    public class BatchDumpBridgeBuild extends ItemBridgeBuild {
+    public class BatchDumpBridgeBuild extends ItemBridgeBuild{
         /** dump 节流累积器, 每帧 += delta * dumpPerSecond, >=1 允许 1 次 dump 调用. */
         float dumpAccum = 0f;
 
         @Override
-        public void doDump() {
-            if (dumpPerSecond <= 0) return;
+        public void doDump(){
+            if(dumpPerSecond <= 0) return;
             dumpAccum += delta() * dumpPerSecond;
-            if (dumpAccum < 1f) return;
-            while (dumpAccum >= 1f) {
-                if (!dump()) break;
+            if(dumpAccum < 1f) return;
+            while(dumpAccum >= 1f){
+                if(!dump()) break;
                 dumpAccum -= 1f;
             }
-            if (dumpAccum > dumpPerSecond) dumpAccum = dumpPerSecond;
+            if(dumpAccum > dumpPerSecond) dumpAccum = dumpPerSecond;
         }
 
         @Override
-        public boolean dump(Item todump) {
-            if (!block.hasItems || items.total() == 0 || proximity.size == 0
-                    || (todump != null && !items.has(todump))) return false;
+        public boolean dump(Item todump){
+            if(!block.hasItems || items.total() == 0 || proximity.size == 0 || (todump != null && !items.has(todump)))
+                return false;
 
             int proxSize = proximity.size;
             int startDir = cdump;
 
-            if (todump == null && items.total() <= proxSize * 2) {
+            if(todump == null && items.total() <= proxSize * 2){
                 int remaining = items.total();
                 boolean anyPushed = false;
 
-                for (int i = 0; i < remaining && items.total() > 0; i++) {
+                for(int i = 0; i < remaining && items.total() > 0; i++){
                     boolean pushedOne = false;
-                    for (int dirStep = 0; dirStep < proxSize; dirStep++) {
+                    for(int dirStep = 0; dirStep < proxSize; dirStep++){
                         int dirIdx = (startDir + i + dirStep) % proxSize;
                         Building other = proximity.get(dirIdx);
-                        if (other == null) continue;
+                        if(other == null) continue;
 
                         Item item = items.take();
-                        if (item == null) return anyPushed;
+                        if(item == null) return anyPushed;
 
-                        if (canDump(other, item) && other.acceptItem(this, item)) {
+                        if(canDump(other, item) && other.acceptItem(this, item)){
                             other.handleItem(this, item);
                             incrementDump(proxSize);
                             anyPushed = true;
                             pushedOne = true;
                             break;
-                        } else {
+                        }else{
                             items.add(item, 1);
                             items.undoFlow(item);
                         }
                     }
-                    if (!pushedOne) break;
+                    if(!pushedOne) break;
                 }
                 return anyPushed;
             }
@@ -115,47 +114,47 @@ public class BatchDumpBridge extends ItemBridge {
             int dumped = 0;
             boolean anyPushed = false;
 
-            while (dumped < budget && items.total() > 0) {
+            while(dumped < budget && items.total() > 0){
                 int prevDumped = dumped;
-                for (int dirStep = 0; dirStep < proxSize && dumped < budget; dirStep++) {
+                for(int dirStep = 0; dirStep < proxSize && dumped < budget; dirStep++){
                     int dirIdx = (startDir + dumped / proxSize + dirStep) % proxSize;
                     Building other = proximity.get(dirIdx);
-                    if (other == null) continue;
+                    if(other == null) continue;
 
-                    if (todump == null) {
-                        for (int typeIdx = 0; typeIdx < totalItemTypes && items.total() > 0; typeIdx++) {
+                    if(todump == null){
+                        for(int typeIdx = 0; typeIdx < totalItemTypes && items.total() > 0; typeIdx++){
                             Item item = (Item) itemArray[typeIdx];
-                            if (item == null || !items.has(item) || !canDump(other, item)) continue;
+                            if(item == null || !items.has(item) || !canDump(other, item)) continue;
 
-                            while (dumped < budget && items.has(item) && canDump(other, item)) {
-                                if (other.acceptItem(this, item)) {
+                            while(dumped < budget && items.has(item) && canDump(other, item)){
+                                if(other.acceptItem(this, item)){
                                     other.handleItem(this, item);
                                     items.remove(item, 1);
                                     incrementDump(proxSize);
                                     dumped++;
                                     anyPushed = true;
-                                } else {
+                                }else{
                                     break;
                                 }
                             }
-                            if (dumped >= budget) break;
+                            if(dumped >= budget) break;
                         }
-                    } else {
-                        if (!canDump(other, todump)) continue;
-                        while (dumped < budget && items.has(todump) && canDump(other, todump)) {
-                            if (other.acceptItem(this, todump)) {
+                    }else{
+                        if(!canDump(other, todump)) continue;
+                        while(dumped < budget && items.has(todump) && canDump(other, todump)){
+                            if(other.acceptItem(this, todump)){
                                 other.handleItem(this, todump);
                                 items.remove(todump, 1);
                                 incrementDump(proxSize);
                                 dumped++;
                                 anyPushed = true;
-                            } else {
+                            }else{
                                 break;
                             }
                         }
                     }
                 }
-                if (dumped == prevDumped) break;
+                if(dumped == prevDumped) break;
             }
             return anyPushed;
         }

@@ -25,11 +25,11 @@ import static mindustry.Vars.world;
  * 液体: 独立于组, 每个建筑单独存储, 由 {@link #outputLiquids} 控制输出行为.
  *
  * @author Momiji142857
- * @since 2026-07-14
  * @see StorageBlock
  * @see LiquidRouter
+ * @since 2026-07-14
  */
-public class LinkedBlock extends Block {
+public class LinkedBlock extends Block{
     /** 启用液体输出, 需同时设置 {@link #outputsLiquid} 为 true */
     public boolean outputLiquids = true;
     /** 仅向同类建筑输出液体 (outputLiquids 为 true 时生效) */
@@ -180,8 +180,7 @@ public class LinkedBlock extends Block {
             Seq<LinkedBuild> neighbors = new Seq<>();
             for(int i = 0; i < proximity.size; i++){
                 Building other = proximity.get(i);
-                if(other.block == block && other instanceof LinkedBuild lb
-                        && lb.team == team && lb.leader() == oldLeader){
+                if(other.block == block && other instanceof LinkedBuild lb && lb.team == team && lb.leader() == oldLeader){
                     neighbors.add(lb);
                 }
             }
@@ -226,11 +225,11 @@ public class LinkedBlock extends Block {
             Seq<ItemModule> subItemsList = new Seq<>();
             for(int i = 0; i < subGroups.size; i++){
                 int size = subGroups.get(i).size;
-                float ratio = totalSize > 0 ? (float)size / totalSize : 0f;
+                float ratio = totalSize > 0 ? (float) size / totalSize : 0f;
 
                 ItemModule subItems = new ItemModule();
                 for(Item item : content.items()){
-                    subItems.set(item, (int)(oldItems.get(item) * ratio));
+                    subItems.set(item, (int) (oldItems.get(item) * ratio));
                 }
                 subItemsList.add(subItems);
             }

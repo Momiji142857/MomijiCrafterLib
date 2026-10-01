@@ -48,20 +48,26 @@ import mindustry.world.blocks.payloads.BuildPayload;
 import mindustry.world.blocks.payloads.Payload;
 import mindustry.world.blocks.payloads.PayloadBlock;
 import mindustry.world.blocks.payloads.UnitPayload;
-import mindustry.world.consumers.*;
+import mindustry.world.blocks.production.GenericCrafter;
+import mindustry.world.consumers.ConsumeItemDynamic;
+import mindustry.world.consumers.ConsumeLiquidsDynamic;
+import mindustry.world.consumers.ConsumePayloadDynamic;
+import mindustry.world.consumers.ConsumePower;
 import mindustry.world.draw.DrawBlock;
 import mindustry.world.draw.DrawDefault;
 import mindustry.world.meta.*;
 
+import java.util.Arrays;
+
 import static mindustry.Vars.*;
 
 /**
- * 多配方工厂方块，每个配方可独立配置输入/输出/热量/载荷等，
- * 并与原版 {@code GenericCrafter}、{@code HeatProducer}、{@code HeatCrafter}、{@code UnitFactory} 行为对齐。
+ * 多配方工厂方块, 每个配方可独立配置输入/输出/热量/载荷等,
+ * 并与原版 {@code GenericCrafter}、{@code HeatProducer}、{@code HeatCrafter}、{@code UnitFactory} 行为对齐.
  *
  * @since 2026-05-27
  * @see Block
- * @see mindustry.world.blocks.production.GenericCrafter
+ * @see GenericCrafter
  * @author Momiji142857 (with DeepSeek)
  * */
 public class MultiCrafter extends Block {
@@ -133,7 +139,7 @@ public class MultiCrafter extends Block {
 
     @Override
     public void init() {
-        Recipe.Recipe_set(this.recipes);
+        Recipe.Recipe_set(recipes);
 
         // 动态物品消费者：单位配方时按 unitCost 规则缩放物品需求
         consume(new ConsumeItemDynamic((MultiCrafterBuild b) -> {
@@ -319,13 +325,13 @@ public class MultiCrafter extends Block {
                     } else if (hasLocked) {
                         t.image(Icon.lock).color(Pal.darkerGray).size(40f).growX().center();
                     } else {
-                        boolean hasInput = rec.inputItems != null || rec.inputLiquids != null
+                        boolean hasInput = (rec.inputItems != null && !Arrays.equals(rec.inputItems, ItemStack.with())) || (rec.inputLiquids != null && !Arrays.equals(rec.inputLiquids, LiquidStack.with()))
                                 || rec.inputPower > 0 || rec.inputHeat > 0 || rec.inputPayloads != null;
                         if (hasInput) {
                             t.add("[lightgray]" + Core.bundle.get("stat.input") + ":[]");
-                            if (rec.inputItems != null) for (ItemStack s : rec.inputItems)
+                            if (rec.inputItems != null && !Arrays.equals(rec.inputItems, ItemStack.with())) for (ItemStack s : rec.inputItems)
                                 t.add(StatValues.displayItem(s.item, s.amount, rec.craftTime, true)).pad(5);
-                            if (rec.inputLiquids != null) for (LiquidStack s : rec.inputLiquids)
+                            if (rec.inputLiquids != null && !Arrays.equals(rec.inputLiquids, LiquidStack.with())) for (LiquidStack s : rec.inputLiquids)
                                 t.add(StatValues.displayLiquid(s.liquid, s.amount * 60f, true)).pad(5);
                             if (rec.inputPayloads != null) for (PayloadStack s : rec.inputPayloads)
                                 t.add(displayPayload(s.item, s.amount, rec.craftTime, true)).pad(5);
@@ -465,9 +471,9 @@ public class MultiCrafter extends Block {
                         float heatVal = e.heat;
                         float heatReq = r.inputHeat;
                         if (heatVal > heatReq)
-                            return label + " " + fmtNum(heatVal) + " [lightgray]| 100%[]";
+                            return label + " " + fmtNum(heatVal) + " [lightgray]| " + Strings.autoFixed(e.efficiencyScale() * 100f, 1) + "%[]";
                         return label + " " + fmtNum(heatVal) + "/" + fmtNum(heatReq)
-                                + " [lightgray]| " + Strings.autoFixed(heatVal / heatReq * 100f, 1) + "%[]";
+                                + " [lightgray]| " + Strings.autoFixed(e.efficiencyScale() * 100f, 1) + "%[]";
                     },
                     () -> Pal.lightOrange,
                     () -> e.heat / r.inputHeat
@@ -1185,9 +1191,12 @@ public class MultiCrafter extends Block {
 
                     for (int i = 0; i < list.size; i++) {
                         UnitCommand cmd = list.get(i);
-                        ImageButton button = commands.button(cmd.getIcon(), Styles.clearNoneTogglei, 40f, () -> {
-                            configure(cmd);
-                        }).tooltip(cmd.localized()).group(group).get();
+                        ImageButton button = commands.button(
+                                cmd.getIcon(),
+                                Styles.clearNoneTogglei,
+                                40f,
+                                () -> configure(cmd)
+                        ).tooltip(cmd.localized()).group(group).get();
 
                         button.update(() -> button.setChecked(
                                 command == cmd || (command == null && unitType.defaultCommand == cmd)));
@@ -1248,8 +1257,7 @@ public class MultiCrafter extends Block {
                 buildRecipeButtonContent(btn, rec, i + 1);
 
                 btn.clicked(() -> {
-                    if (currentRecipe == idx) switchRecipe(-1);
-                    else switchRecipe(idx);
+                    configure(currentRecipe == idx ? -1 : idx);
                     deselect();
                 });
                 btn.update(() -> btn.setChecked(currentRecipe == idx));
